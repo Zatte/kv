@@ -1,10 +1,12 @@
 # KeyValue "kv"
 Simple key-value interface backed by multiple backends (multiple sql engines through gorm, pure golang through badger DB; cloud scale through google datastore). 
 
-This is not meant for the highest performance applications but rather quick prototyping for cases where simple get/upsert/del/iterate in enough to get started. The different backends are meants for various scaling scenarios  and deployment needs. 
+This is not meant for the high performance applications but rather quick prototyping for cases where simple get/upsert/del/iterate in enough to get started. The different backends are meants for various scaling scenarios  and deployment needs. 
 
 ## Status
-Very much WIP/Early stage. PRs are welcome.
+WIP/Experiment. Should not be used. (limited tests, poor code quality, fragile interfaces, etc)
+
+PRs are welcome.
 
 ## Usage 
 
@@ -79,3 +81,19 @@ go test
 - - [ ] MySQL
 - - [ ] Postgres
 - - [ ] MsSQL
+
+
+## License
+Copyright 2020 Mikael Rapp, github.com/zatte
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
