@@ -13,9 +13,9 @@ func New(connectionString string) (OrderedTransactional, error) {
 
 	switch u.Scheme {
 	case "datastore":
-		return NewdatastoreDbFromUrl(u)
+		return NewDatastoreDbFromUrl(u)
 	case "badger":
-		return NewbadgerDbFromUrl(u)
+		return NewBadgerDbFromUrl(u)
 	default:
 		return NewGormDbFromUrl(u)
 	}

@@ -15,7 +15,7 @@ type datastoreKeyValue struct {
 	Val []byte         `datastore:"val,noindex"`
 }
 
-type datastoreDB struct {
+type DatastoreDB struct {
 	*datastore.Client
 	cancel func()
 }
@@ -29,29 +29,30 @@ type datastoreIterator struct {
 	*datastore.Iterator
 }
 
-func NewdatastoreDbFromUrl(u *url.URL) (*datastoreDB, error) {
+func NewDatastoreDbFromUrl(u *url.URL) (*DatastoreDB, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create a datastore client. In a typical application, you would create
 	// a single client which is reused for every datastore operation.
 	dsClient, err := datastore.NewClient(ctx, u.Host)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
-	return &datastoreDB{dsClient, cancel}, nil
+	return &DatastoreDB{dsClient, cancel}, nil
 }
 
 // datastore db
 
 // Get gets the value of a key within a single query transaction
-func (dsDb *datastoreDB) Close() error {
+func (dsDb *DatastoreDB) Close() error {
 	defer dsDb.cancel()
 	return dsDb.Client.Close()
 }
 
 // Get gets the value of a key within a single query transaction
-func (dsDb *datastoreDB) Get(ctx context.Context, key []byte) (res []byte, err error) {
+func (dsDb *DatastoreDB) Get(ctx context.Context, key []byte) (res []byte, err error) {
 	k := datastore.NameKey(DataStoreKind, string(key), nil)
 	e := &datastoreKeyValue{}
 	if err := dsDb.Client.Get(ctx, k, e); err != nil {
@@ -64,7 +65,7 @@ func (dsDb *datastoreDB) Get(ctx context.Context, key []byte) (res []byte, err e
 }
 
 // Put sets the value of a key within a single query transaction
-func (dsDb *datastoreDB) Put(ctx context.Context, key, value []byte) error {
+func (dsDb *DatastoreDB) Put(ctx context.Context, key, value []byte) error {
 	k := datastore.NameKey(DataStoreKind, string(key), nil)
 	e := &datastoreKeyValue{
 		Key: k,
@@ -80,7 +81,7 @@ func (dsDb *datastoreDB) Put(ctx context.Context, key, value []byte) error {
 }
 
 // Delete removes a key within a single transaction
-func (dsDb *datastoreDB) Delete(ctx context.Context, key []byte) error {
+func (dsDb *DatastoreDB) Delete(ctx context.Context, key []byte) error {
 	k := datastore.NameKey(DataStoreKind, string(key), nil)
 	if err := dsDb.Client.Delete(ctx, k); err != nil {
 		if err == datastore.ErrNoSuchEntity {
@@ -92,7 +93,7 @@ func (dsDb *datastoreDB) Delete(ctx context.Context, key []byte) error {
 }
 
 // NewTransaction for batching multiple values inside a transaction
-func (dsDb *datastoreDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
+func (dsDb *DatastoreDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	tx, err := dsDb.Client.NewTransaction(ctx)
 	if err != nil {
 		return nil, err

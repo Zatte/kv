@@ -7,7 +7,7 @@ import (
 	"github.com/dgraph-io/badger/v2"
 )
 
-type badgerDB struct {
+type BadgerDB struct {
 	*badger.DB
 }
 
@@ -19,7 +19,7 @@ type badgerIterator struct {
 	*badger.Iterator
 }
 
-func NewbadgerDbFromUrl(u *url.URL) (*badgerDB, error) {
+func NewBadgerDbFromUrl(u *url.URL) (*BadgerDB, error) {
 	var db *badger.DB
 	var err error
 	passw, _ := u.User.Password()
@@ -48,8 +48,8 @@ func NewbadgerDbFromUrl(u *url.URL) (*badgerDB, error) {
 	return NewbadgerFromDB(db)
 }
 
-func NewbadgerFromDB(db *badger.DB) (*badgerDB, error) {
-	return &badgerDB{
+func NewbadgerFromDB(db *badger.DB) (*BadgerDB, error) {
+	return &BadgerDB{
 		db,
 	}, nil
 }
@@ -57,12 +57,12 @@ func NewbadgerFromDB(db *badger.DB) (*badgerDB, error) {
 // badger db
 
 // Get gets the value of a key within a single query transaction
-func (bdb *badgerDB) Close() error {
+func (bdb *BadgerDB) Close() error {
 	return bdb.DB.Close()
 }
 
 // Get gets the value of a key within a single query transaction
-func (bdb *badgerDB) Get(ctx context.Context, key []byte) (res []byte, err error) {
+func (bdb *BadgerDB) Get(ctx context.Context, key []byte) (res []byte, err error) {
 	err = bdb.DB.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -78,7 +78,7 @@ func (bdb *badgerDB) Get(ctx context.Context, key []byte) (res []byte, err error
 }
 
 // Put sets the value of a key within a single query transaction
-func (bdb *badgerDB) Put(ctx context.Context, key, value []byte) error {
+func (bdb *BadgerDB) Put(ctx context.Context, key, value []byte) error {
 	err := bdb.DB.Update(func(txn *badger.Txn) error {
 		return txn.Set(key, value)
 	})
@@ -89,7 +89,7 @@ func (bdb *badgerDB) Put(ctx context.Context, key, value []byte) error {
 }
 
 // Delete removes a key within a single transaction
-func (bdb *badgerDB) Delete(ctx context.Context, key []byte) error {
+func (bdb *BadgerDB) Delete(ctx context.Context, key []byte) error {
 	return bdb.DB.Update(func(txn *badger.Txn) error {
 		err := txn.Delete(key)
 		if err == badger.ErrKeyNotFound {
@@ -100,7 +100,7 @@ func (bdb *badgerDB) Delete(ctx context.Context, key []byte) error {
 }
 
 // NewTransaction for batching multiple values inside a transaction
-func (bdb *badgerDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
+func (bdb *BadgerDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	return &badgerTransaction{
 		bdb.DB.NewTransaction(!readOnly),
 	}, nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 
@@ -14,7 +13,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
-type gromKeyValue struct {
+type GromKeyValue struct {
 	gorm.Model
 	Key []byte `gorm:"primary_key" sql:"key"`
 	Val []byte `sql:"val"`
@@ -43,7 +42,6 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 		db, err = gorm.Open("mysql", fmt.Sprintf("%s@%s/%s?%s", u.User.String(), u.Host, u.Path, u.RawQuery))
 	case "sqlite3":
 		p := strings.TrimPrefix(u.Path, "/")
-		log.Printf("Opening sqlite path:" + p)
 		db, err = gorm.Open("sqlite3", p)
 	case "sqlserver":
 		fallthrough
@@ -67,7 +65,7 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 }
 
 func NewGormFromDB(db *gorm.DB) (*GormDB, error) {
-	db.AutoMigrate(&gromKeyValue{})
+	db.AutoMigrate(&GromKeyValue{})
 	return &GormDB{
 		db,
 	}, nil
@@ -81,7 +79,7 @@ func (gdb *GormDB) Close() error {
 
 // Get gets the value of a key within a single query transaction
 func (gdb *GormDB) Get(ctx context.Context, key []byte) ([]byte, error) {
-	kv := &gromKeyValue{}
+	kv := &GromKeyValue{}
 	if result := gdb.DB.Where("key = ?", key).First(&kv); result.Error != nil {
 		if gorm.IsRecordNotFoundError(result.Error) {
 			return nil, ErrNotFound
@@ -94,7 +92,7 @@ func (gdb *GormDB) Get(ctx context.Context, key []byte) ([]byte, error) {
 
 // Put sets the value of a key within a single query transaction
 func (gdb *GormDB) Put(ctx context.Context, key, value []byte) error {
-	kv := &gromKeyValue{
+	kv := &GromKeyValue{
 		Key: key,
 		Val: value,
 	}
@@ -110,7 +108,7 @@ func (gdb *GormDB) Put(ctx context.Context, key, value []byte) error {
 
 // Delete removes a key within a single transaction
 func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
-	kv := &gromKeyValue{
+	kv := &GromKeyValue{
 		Key: key,
 	}
 	if result := gdb.DB.Where("key = ?", key).Delete(&kv); result.Error != nil {
@@ -136,7 +134,7 @@ func (gdb *GormDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTr
 
 // Seeks initializes an iterator at the given key (inclusive)
 func (gdb *gormTransaction) Seek(ctx context.Context, StartKey []byte) (Iterator, error) {
-	rows, err := gdb.DB.Model(&gromKeyValue{}).Select("key, val").Order("key").Where("key >= ?", StartKey).Rows()
+	rows, err := gdb.DB.Model(&GromKeyValue{}).Select("key, val").Order("key").Where("key >= ?", StartKey).Rows()
 	return &gormIterator{rows}, err
 }
 
