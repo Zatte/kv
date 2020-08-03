@@ -2,20 +2,31 @@ package kv
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKvStores(t *testing.T) {
-	db, err := New("sqlite3:///file%3A%3Amemory%3A%3Fcache%3Dshared")
-	assert.NoError(t, err)
-	testStores(t, db)
+	db, err := New("sqlite3:///file%3A%3Amemory%3A%3Fcache%3Dshared&mode=rwc")
+	require.NoError(t, err)
+
+	badger, err := New("badger:///?memory=true")
+	require.NoError(t, err)
+
+	datastore, err := New("datastore://" + os.Getenv("DATASTORE_PROJECT_ID"))
+	require.NoError(t, err)
+
+	testStores(t, db, "gorm")
+	testStores(t, badger, "badger")
+	testStores(t, datastore, "datastore")
 }
 
-func testStores(t *testing.T, db OrderedTransactional) {
+func testStores(t *testing.T, db OrderedTransactional, name string) {
 	ctx := context.Background()
-	t.Run("test CDR", func(t *testing.T) {
+	t.Run(name+": create delete read", func(t *testing.T) {
 		assert.NoError(t, db.Put(ctx, []byte("A0"), []byte("1")))
 		assert.NoError(t, db.Put(ctx, []byte("A01"), []byte("2")))
 		assert.NoError(t, db.Put(ctx, []byte("A02"), []byte("3")))
@@ -44,7 +55,7 @@ func testStores(t *testing.T, db OrderedTransactional) {
 		assert.Equal(t, v, []byte("5"))
 	})
 
-	t.Run("test adding and reading back ordered twice", func(t *testing.T) {
+	t.Run(name+": adding and reading (iterator) ordered twice", func(t *testing.T) {
 		assert.NoError(t, db.Put(ctx, []byte("B0"), []byte("1")))
 		assert.NoError(t, db.Put(ctx, []byte("B01"), []byte("2")))
 		assert.NoError(t, db.Put(ctx, []byte("B02"), []byte("3")))
@@ -56,14 +67,18 @@ func testStores(t *testing.T, db OrderedTransactional) {
 		assert.NoError(t, db.Put(ctx, []byte("B124"), []byte("9")))
 
 		t1, err := db.NewTransaction(ctx, false)
+		defer t1.Discard(ctx)
 		assert.NoError(t, err)
 		t2, err := db.NewTransaction(ctx, false)
+		defer t1.Discard(ctx)
 		assert.NoError(t, err)
 
 		it1, err := t1.Seek(ctx, []byte("B02"))
 		assert.NoError(t, err)
+		defer it1.Close()
 		it2, err := t2.Seek(ctx, []byte("B02"))
 		assert.NoError(t, err)
+		defer it2.Close()
 
 		var previousVal [3]byte
 		_, v, err := it1.Next(ctx)
@@ -83,6 +98,5 @@ func testStores(t *testing.T, db OrderedTransactional) {
 			assert.Less(t, string(previousVal[:]), string(v))
 			copy(v, previousVal[:])
 		}
-
 	})
 }

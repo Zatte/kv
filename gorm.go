@@ -75,6 +75,10 @@ func NewGormFromDB(db *gorm.DB) (*GormDB, error) {
 
 // gorm db
 
+func (gdb *GormDB) Close() error {
+	return gdb.DB.Close()
+}
+
 // Get gets the value of a key within a single query transaction
 func (gdb *GormDB) Get(ctx context.Context, key []byte) ([]byte, error) {
 	kv := &gromKeyValue{}
@@ -123,7 +127,7 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 func (gdb *GormDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	return &gormTransaction{
 		&GormDB{
-			gdb.DB.BeginTx(ctx, &sql.TxOptions{}),
+			gdb.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: readOnly}),
 		},
 	}, nil
 }

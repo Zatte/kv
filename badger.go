@@ -2,37 +2,44 @@ package kv
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
-	"log"
 	"net/url"
-	"strings"
 
-	"github.com/jinzhu/badger"
-	_ "github.com/jinzhu/badger/dialects/mssql"
-	_ "github.com/jinzhu/badger/dialects/postgres"
-	_ "github.com/jinzhu/badger/dialects/sqlite"
+	"github.com/dgraph-io/badger/v2"
 )
-
 
 type badgerDB struct {
 	*badger.DB
 }
 
 type badgerTransaction struct {
-	*badgerDB
+	*badger.Txn
 }
 
 type badgerIterator struct {
-	*sql.Rows
+	*badger.Iterator
 }
 
 func NewbadgerDbFromUrl(u *url.URL) (*badgerDB, error) {
 	var db *badger.DB
 	var err error
 	passw, _ := u.User.Password()
+	passw = passw + "12345678901234567890123456789012" // make sure the password is at least 32 chars by appending a default suffix
 
-	
+	if err != nil {
+		return nil, err
+	}
+
+	if u.Query().Get("memory") == "true" {
+		db, err = badger.Open(badger.DefaultOptions("").WithInMemory(true))
+	} else {
+		db, err = badger.Open(
+			badger.DefaultOptions(u.Path).
+				// Lower RAM usage without mmap
+				WithNumVersionsToKeep(0).
+				WithEncryptionKey([]byte(passw)[:32]).
+				WithTruncate(true), // this would trucate faulty value logs; something that should NOT be problematic with syncWrites(true)
+		)
+	}
 
 	if err != nil {
 		return nil, err
@@ -42,7 +49,6 @@ func NewbadgerDbFromUrl(u *url.URL) (*badgerDB, error) {
 }
 
 func NewbadgerFromDB(db *badger.DB) (*badgerDB, error) {
-	db.AutoMigrate(&badgerKeyValue{})
 	return &badgerDB{
 		db,
 	}, nil
@@ -51,99 +57,128 @@ func NewbadgerFromDB(db *badger.DB) (*badgerDB, error) {
 // badger db
 
 // Get gets the value of a key within a single query transaction
-func (gdb *badgerDB) Get(ctx context.Context, key []byte) ([]byte, error) {
-	kv := &badgerKeyValue{}
-	if result := gdb.DB.Where("key = ?", key).First(&kv); result.Error != nil {
-		if badger.IsRecordNotFoundError(result.Error) {
-			return nil, ErrNotFound
-		}
-		return nil, result.Error
-	}
+func (bdb *badgerDB) Close() error {
+	return bdb.DB.Close()
+}
 
-	return kv.Val, nil
+// Get gets the value of a key within a single query transaction
+func (bdb *badgerDB) Get(ctx context.Context, key []byte) (res []byte, err error) {
+	err = bdb.DB.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		res, err = item.ValueCopy(res)
+		return err
+	})
+	if err == badger.ErrKeyNotFound {
+		err = ErrNotFound
+	}
+	return res, err
 }
 
 // Put sets the value of a key within a single query transaction
-func (gdb *badgerDB) Put(ctx context.Context, key, value []byte) error {
-	kv := &badgerKeyValue{
-		Key: key,
-		Val: value,
+func (bdb *badgerDB) Put(ctx context.Context, key, value []byte) error {
+	err := bdb.DB.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, value)
+	})
+	if err == badger.ErrKeyNotFound {
+		err = ErrNotFound
 	}
-	if result := gdb.DB.Save(&kv); result.Error != nil {
-		if badger.IsRecordNotFoundError(result.Error) {
-			return ErrNotFound
-		}
-		return result.Error
-	}
-
-	return nil
+	return err
 }
 
 // Delete removes a key within a single transaction
-func (gdb *badgerDB) Delete(ctx context.Context, key []byte) error {
-	kv := &badgerKeyValue{
-		Key: key,
-	}
-	if result := gdb.DB.Where("key = ?", key).Delete(&kv); result.Error != nil {
-		if badger.IsRecordNotFoundError(result.Error) {
+func (bdb *badgerDB) Delete(ctx context.Context, key []byte) error {
+	return bdb.DB.Update(func(txn *badger.Txn) error {
+		err := txn.Delete(key)
+		if err == badger.ErrKeyNotFound {
 			return ErrNotFound
 		}
-		return result.Error
-	}
-
-	return nil
+		return err
+	})
 }
 
 // NewTransaction for batching multiple values inside a transaction
-func (gdb *badgerDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
+func (bdb *badgerDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	return &badgerTransaction{
-		&badgerDB{
-			gdb.DB.BeginTx(ctx, &sql.TxOptions{}),
-		},
+		bdb.DB.NewTransaction(!readOnly),
 	}, nil
 }
 
 // badgerTransaction
 
 // Seeks initializes an iterator at the given key (inclusive)
-func (gdb *badgerTransaction) Seek(ctx context.Context, StartKey []byte) (Iterator, error) {
-	rows, err := gdb.DB.Model(&badgerKeyValue{}).Select("key, val").Order("key").Where("key >= ?", StartKey).Rows()
-	return &badgerIterator{rows}, err
+
+func (bdb *badgerTransaction) Close() error {
+	return bdb.Discard(context.Background())
+}
+
+// Get gets the value of a key within a single query transaction
+func (bdb *badgerTransaction) Get(ctx context.Context, key []byte) (res []byte, err error) {
+	item, err := bdb.Txn.Get(key)
+	if err != nil {
+		if err == badger.ErrKeyNotFound {
+			err = ErrNotFound
+		}
+		return res, err
+	}
+	return item.ValueCopy(res)
+}
+
+// Put sets the value of a key within a single query transaction
+func (bdb *badgerTransaction) Put(ctx context.Context, key, value []byte) error {
+	err := bdb.Txn.Set(key, value)
+	if err == badger.ErrKeyNotFound {
+		err = ErrNotFound
+	}
+	return err
+}
+
+// Delete removes a key within a single transaction
+func (bdb *badgerTransaction) Delete(ctx context.Context, key []byte) error {
+	err := bdb.Txn.Delete(key)
+	if err == badger.ErrKeyNotFound {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (bdb *badgerTransaction) Seek(ctx context.Context, StartKey []byte) (Iterator, error) {
+	it := bdb.Txn.NewIterator(badger.DefaultIteratorOptions)
+	it.Seek(StartKey)
+	return &badgerIterator{
+		it,
+	}, nil
 }
 
 // Discard removes all sides effects of the transaction
-func (gdb *badgerTransaction) Discard(ctx context.Context) error {
-	e := gdb.DB.Rollback()
-	return e.Error
+func (bdb *badgerTransaction) Discard(ctx context.Context) error {
+	bdb.Txn.Discard()
+	return nil
 }
 
 // Commit persists all side effects of the transaction and returns an error if there are any conflics
-func (gdb *badgerTransaction) Commit(ctx context.Context) error {
-	e := gdb.DB.Commit()
-	return e.Error
+func (bdb *badgerTransaction) Commit(ctx context.Context) error {
+	return bdb.Txn.Commit()
 }
 
 // badgerIterator
 
 // Next yeilds the next key-value in iterator. Key-values can not be re-used between iterations. Make sure top copy the values if you must.
 func (it *badgerIterator) Next(ctx context.Context) (key, value []byte, err error) {
-	if !it.Rows.Next() {
+	if !it.Iterator.Valid() {
 		return nil, nil, ErrNotFound
 	}
 
-	var k, v []byte
-	if err := it.Rows.Scan(&k, &v); err != nil {
-		return nil, nil, err
-	}
+	defer it.Iterator.Next()
 
-	if k == nil {
-		return nil, nil, ErrNotFound
-	}
-
-	return k, v, nil
+	value, err = it.Iterator.Item().ValueCopy(value)
+	return it.Iterator.Item().Key(), value, err
 }
 
 // Close must always be called to clean up iterators.
-func (gdb *badgerIterator) Close() error {
+func (bdb *badgerIterator) Close() error {
+	bdb.Iterator.Close()
 	return nil
 }
