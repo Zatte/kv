@@ -10,17 +10,25 @@ import (
 )
 
 func TestKvStores(t *testing.T) {
-	db, err := New("sqlite3:///file%3A%3Amemory%3A%3Fcache%3Dshared&mode=rwc")
+	sqlitemem, err := New("sqlite3:///file%3A%3Amemory%3A%3Fcache%3Dshared&mode=rwc")
+	require.NoError(t, err)
+
+	sqliteFile, err := New("sqlite3:///./sqlite.testing.db")
 	require.NoError(t, err)
 
 	badger, err := New("badger:///?memory=true")
 	require.NoError(t, err)
 
+	badgerFile, err := New("badger:///./badger.testing.db")
+	require.NoError(t, err)
+
 	datastore, err := New("datastore://" + os.Getenv("DATASTORE_PROJECT_ID"))
 	require.NoError(t, err)
 
-	testStores(t, db, "gorm")
+	testStores(t, sqlitemem, "gorm")
+	testStores(t, sqliteFile, "sqlitefile")
 	testStores(t, badger, "badger")
+	testStores(t, badgerFile, "badgerFile")
 	testStores(t, datastore, "datastore")
 }
 

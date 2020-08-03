@@ -25,7 +25,7 @@ func main(){
   // db, err := kv.New("badger:///?memory=true")
 
   // Badger DB by path
-  // db, err := kv.New("badger:///tmp/db")
+  // db, err := kv.New("badger:///./badger.testing.db")
 
   // datastore, local emulator for testing / development
   // db, err := kv.New("datastore://" + os.Getenv("DATASTORE_PROJECT_ID"))

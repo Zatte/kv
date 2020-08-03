@@ -3,12 +3,21 @@ package kv
 import (
 	"context"
 	"net/url"
+	"runtime"
+	"time"
 
 	"github.com/dgraph-io/badger/v2"
 )
 
+const gcWorkers = 2
+const gcThreshold = 0.5
+const gcInterval = time.Hour * 5
+
 type BadgerDB struct {
 	*badger.DB
+
+	ctx    context.Context
+	cancel func()
 }
 
 type badgerTransaction struct {
@@ -22,6 +31,7 @@ type badgerIterator struct {
 func NewBadgerDbFromUrl(u *url.URL) (*BadgerDB, error) {
 	var db *badger.DB
 	var err error
+
 	passw, _ := u.User.Password()
 	passw = passw + "12345678901234567890123456789012" // make sure the password is at least 32 chars by appending a default suffix
 
@@ -29,11 +39,16 @@ func NewBadgerDbFromUrl(u *url.URL) (*BadgerDB, error) {
 		return nil, err
 	}
 
+	path := u.Path
+	if len(path) > 1 && path[1] == '.' {
+		path = path[1:]
+	}
+
 	if u.Query().Get("memory") == "true" {
 		db, err = badger.Open(badger.DefaultOptions("").WithInMemory(true))
 	} else {
 		db, err = badger.Open(
-			badger.DefaultOptions(u.Path).
+			badger.DefaultOptions(path).
 				// Lower RAM usage without mmap
 				WithNumVersionsToKeep(0).
 				WithEncryptionKey([]byte(passw)[:32]).
@@ -49,9 +64,35 @@ func NewBadgerDbFromUrl(u *url.URL) (*BadgerDB, error) {
 }
 
 func NewbadgerFromDB(db *badger.DB) (*BadgerDB, error) {
-	return &BadgerDB{
+	ctx, cancel := context.WithCancel(context.Background())
+
+	bdb := &BadgerDB{
 		db,
-	}, nil
+		ctx,
+		cancel,
+	}
+
+	go bdb.runGc()
+
+	return bdb, nil
+}
+
+// TODO: parametrize these constants
+func (bdb *BadgerDB) runGc() {
+	ticker := time.NewTicker(gcInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			bdb.DB.Flatten(gcWorkers) // 4 number of workers
+			var err error
+			for ; err == nil; err = bdb.DB.RunValueLogGC(gcThreshold) {
+			}
+			runtime.GC()
+		case <-bdb.ctx.Done():
+			return
+		}
+	}
 }
 
 // badger db
