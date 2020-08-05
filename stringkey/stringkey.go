@@ -1,4 +1,4 @@
-package stringkeyer
+package stringkey
 
 import (
 	"context"

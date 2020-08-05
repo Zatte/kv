@@ -9,5 +9,6 @@ require (
 	github.com/jinzhu/gorm v1.9.15
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/stretchr/testify v1.6.1
+	github.com/zatte/fdbtuple v0.0.0-20200805194734-f167c1b0559e
 	google.golang.org/api v0.26.0
 )
