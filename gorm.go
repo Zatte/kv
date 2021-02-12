@@ -7,10 +7,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/mssql"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/driver/sqlserver"
+	"gorm.io/gorm"
 )
 
 type GromKeyValue struct {
@@ -37,12 +38,14 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 	passw, _ := u.User.Password()
 	switch u.Scheme {
 	case "postgres":
-		db, err = gorm.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s", u.Host, u.Port(), u.User.Username(), u.Path, passw))
+		dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s", u.Host, u.Port(), u.User.Username(), u.Path, passw)
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	case "mysql":
-		db, err = gorm.Open("mysql", fmt.Sprintf("%s@%s/%s?%s", u.User.String(), u.Host, u.Path, u.RawQuery))
+		dsn := fmt.Sprintf("%s@%s/%s?%s", u.User.String(), u.Host, u.Path, u.RawQuery)
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	case "sqlite3":
 		p := strings.TrimPrefix(u.Path, "/")
-		db, err = gorm.Open("sqlite3", p)
+		db, err = gorm.Open(sqlite.Open(p), &gorm.Config{})
 	case "sqlserver":
 		fallthrough
 	case "mssql":
@@ -52,7 +55,8 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 		}
 		uCopy.Scheme = "sqlserver"
 
-		db, err = gorm.Open("mssql", uCopy.String())
+		dsn := uCopy.String()
+		db, err = gorm.Open(sqlserver.Open(dsn), &gorm.Config{})
 	default:
 		return nil, ErrInvalidDb
 	}
@@ -74,14 +78,18 @@ func NewGormFromDB(db *gorm.DB) (*GormDB, error) {
 // gorm db
 
 func (gdb *GormDB) Close() error {
-	return gdb.DB.Close()
+	d, err := gdb.DB.DB()
+	if err != nil {
+		return err
+	}
+	return d.Close()
 }
 
 // Get gets the value of a key within a single query transaction
 func (gdb *GormDB) Get(ctx context.Context, key []byte) ([]byte, error) {
 	kv := &GromKeyValue{}
 	if result := gdb.DB.Where("key = ?", key).First(&kv); result.Error != nil {
-		if gorm.IsRecordNotFoundError(result.Error) {
+		if result.Error == gorm.ErrRecordNotFound {
 			return nil, ErrNotFound
 		}
 		return nil, result.Error
@@ -97,7 +105,7 @@ func (gdb *GormDB) Put(ctx context.Context, key, value []byte) error {
 		Val: value,
 	}
 	if result := gdb.DB.Save(&kv); result.Error != nil {
-		if gorm.IsRecordNotFoundError(result.Error) {
+		if result.Error == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
 		return result.Error
@@ -112,7 +120,7 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 		Key: key,
 	}
 	if result := gdb.DB.Where("key = ?", key).Delete(&kv); result.Error != nil {
-		if gorm.IsRecordNotFoundError(result.Error) {
+		if result.Error == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
 		return result.Error
@@ -125,7 +133,7 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 func (gdb *GormDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	return &gormTransaction{
 		&GormDB{
-			gdb.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: readOnly}),
+			gdb.DB.Begin(&sql.TxOptions{ReadOnly: readOnly}),
 		},
 	}, nil
 }
