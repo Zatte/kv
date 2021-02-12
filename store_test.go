@@ -2,7 +2,6 @@ package kv
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,14 +21,14 @@ func TestKvStores(t *testing.T) {
 	badgerFile, err := New("badger:///./badger.testing.db")
 	require.NoError(t, err)
 
-	datastore, err := New("datastore://" + os.Getenv("DATASTORE_PROJECT_ID"))
-	require.NoError(t, err)
+	//datastore, err := New("datastore://" + os.Getenv("DATASTORE_PROJECT_ID"))
+	//require.NoError(t, err)
 
-	testStores(t, sqlitemem, "gorm")
+	testStores(t, sqlitemem, "sqlitemem")
 	testStores(t, sqliteFile, "sqlitefile")
 	testStores(t, badger, "badger")
 	testStores(t, badgerFile, "badgerFile")
-	testStores(t, datastore, "datastore")
+	//testStores(t, datastore, "datastore")
 }
 
 func testStores(t *testing.T, db OrderedTransactional, name string) {

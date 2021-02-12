@@ -12,12 +12,12 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type GromKeyValue struct {
-	gorm.Model
-	Key []byte `gorm:"primary_key" sql:"key"`
-	Val []byte `sql:"val"`
+	Key []byte `gorm:"primaryKey"`
+	Val []byte
 }
 
 type GormDB struct {
@@ -104,7 +104,13 @@ func (gdb *GormDB) Put(ctx context.Context, key, value []byte) error {
 		Key: key,
 		Val: value,
 	}
-	if result := gdb.DB.Save(&kv); result.Error != nil {
+
+	result := gdb.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"val": value}),
+	}).Create(&kv)
+
+	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
@@ -119,11 +125,15 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 	kv := &GromKeyValue{
 		Key: key,
 	}
-	if result := gdb.DB.Where("key = ?", key).Delete(&kv); result.Error != nil {
+	result := gdb.DB.Where("key = ?", key).Delete(&kv)
+	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return ErrNotFound
 		}
 		return result.Error
+	}
+	if result.RowsAffected <= 0 {
+		return ErrNotFound
 	}
 
 	return nil
