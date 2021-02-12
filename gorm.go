@@ -13,6 +13,7 @@ import (
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
 type GromKeyValue struct {
@@ -39,13 +40,19 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 	switch u.Scheme {
 	case "postgres":
 		dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s", u.Host, u.Port(), u.User.Username(), u.Path, passw)
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent),
+		})
 	case "mysql":
 		dsn := fmt.Sprintf("%s@%s/%s?%s", u.User.String(), u.Host, u.Path, u.RawQuery)
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent),
+		})
 	case "sqlite3":
 		p := strings.TrimPrefix(u.Path, "/")
-		db, err = gorm.Open(sqlite.Open(p), &gorm.Config{})
+		db, err = gorm.Open(sqlite.Open(p), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent),
+		})
 	case "sqlserver":
 		fallthrough
 	case "mssql":
@@ -56,7 +63,9 @@ func NewGormDbFromUrl(u *url.URL) (*GormDB, error) {
 		uCopy.Scheme = "sqlserver"
 
 		dsn := uCopy.String()
-		db, err = gorm.Open(sqlserver.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(sqlserver.Open(dsn), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent),
+		})
 	default:
 		return nil, ErrInvalidDb
 	}
