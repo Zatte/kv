@@ -97,7 +97,7 @@ func (gdb *GormDB) Close() error {
 // Get gets the value of a key within a single query transaction
 func (gdb *GormDB) Get(ctx context.Context, key []byte) ([]byte, error) {
 	kv := &GromKeyValue{}
-	if result := gdb.DB.Where("key = ?", key).First(&kv); result.Error != nil {
+	if result := gdb.DB.WithContext(ctx).Where("key = ?", key).First(&kv); result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, ErrNotFound
 		}
@@ -114,7 +114,7 @@ func (gdb *GormDB) Put(ctx context.Context, key, value []byte) error {
 		Val: value,
 	}
 
-	result := gdb.DB.Clauses(clause.OnConflict{
+	result := gdb.DB.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.Assignments(map[string]interface{}{"val": value}),
 	}).Create(&kv)
@@ -134,7 +134,7 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 	kv := &GromKeyValue{
 		Key: key,
 	}
-	result := gdb.DB.Where("key = ?", key).Delete(&kv)
+	result := gdb.DB.WithContext(ctx).Where("key = ?", key).Delete(&kv)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return ErrNotFound
@@ -152,7 +152,7 @@ func (gdb *GormDB) Delete(ctx context.Context, key []byte) error {
 func (gdb *GormDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTransaction, error) {
 	return &gormTransaction{
 		&GormDB{
-			gdb.DB.Begin(&sql.TxOptions{ReadOnly: readOnly}),
+			gdb.DB.WithContext(ctx).Begin(&sql.TxOptions{ReadOnly: readOnly}),
 		},
 	}, nil
 }
@@ -161,19 +161,19 @@ func (gdb *GormDB) NewTransaction(ctx context.Context, readOnly bool) (OrderedTr
 
 // Seeks initializes an iterator at the given key (inclusive)
 func (gdb *gormTransaction) Seek(ctx context.Context, StartKey []byte) (Iterator, error) {
-	rows, err := gdb.DB.Model(&GromKeyValue{}).Select("key, val").Order("key").Where("key >= ?", StartKey).Rows()
+	rows, err := gdb.DB.WithContext(ctx).Model(&GromKeyValue{}).Select("key, val").Order("key").Where("key >= ?", StartKey).Rows()
 	return &gormIterator{rows}, err
 }
 
 // Discard removes all sides effects of the transaction
 func (gdb *gormTransaction) Discard(ctx context.Context) error {
-	e := gdb.DB.Rollback()
+	e := gdb.DB.WithContext(ctx).Rollback()
 	return e.Error
 }
 
 // Commit persists all side effects of the transaction and returns an error if there are any conflics
 func (gdb *gormTransaction) Commit(ctx context.Context) error {
-	e := gdb.DB.Commit()
+	e := gdb.DB.WithContext(ctx).Commit()
 	return e.Error
 }
 
@@ -198,6 +198,6 @@ func (it *gormIterator) Next(ctx context.Context) (key, value []byte, err error)
 }
 
 // Close must always be called to clean up iterators.
-func (gdb *gormIterator) Close() error {
+func (it *gormIterator) Close() error {
 	return nil
 }
